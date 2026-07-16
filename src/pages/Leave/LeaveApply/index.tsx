@@ -19,16 +19,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Card, Form, Select, DatePicker, Input, Button, Space, Descriptions, Statistic, Row, Col,
-  message, Alert, Spin, Popconfirm, Tag,
+  message, Alert, Spin, Popconfirm, Tag, Upload,
 } from 'antd';
+import type { UploadFile, UploadProps } from 'antd';
 import {
   PlusOutlined, SendOutlined, CalculatorOutlined, CloseCircleOutlined,
+  UploadOutlined, InboxOutlined, DeleteOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import { useUserStore } from '@/models/user';
 import {
   calculateDays, getBalance, applyLeave, submitLeave, cancelLeave,
 } from '@/services/leave';
 import type { LeaveBalance } from '@/services/leave';
+import { uploadAttachment } from '@/services/leave-attachment';
+import type { LeaveAttachment } from '@/services/leave-attachment';
 import { LEAVE_TYPE_MAP, LEAVE_APPLICATION_STATUS_MAP } from '@/utils/constants';
 import { getStatusColor } from '@/utils/constants';
 import dayjs from 'dayjs';
@@ -50,6 +54,11 @@ export default function LeaveApplyPage() {
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [selectedLeaveType, setSelectedLeaveType] = useState<number | undefined>();
+
+  // 附件上传
+  const [attachments, setAttachments] = useState<LeaveAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
 
   // 查询余额
   const fetchBalances = useCallback(async () => {
@@ -95,6 +104,45 @@ export default function LeaveApplyPage() {
     }
   };
 
+  // 附件上传处理
+  const handleUpload: UploadProps['customRequest'] = async (options) => {
+    const { file, onSuccess, onError } = options;
+    const uploadFile = file as File;
+
+    // 大小校验：最大 10MB
+    if (uploadFile.size > 10 * 1024 * 1024) {
+      message.error('文件大小不能超过10MB');
+      onError?.(new Error('文件大小不能超过10MB'));
+      return;
+    }
+
+    // 类型校验
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowedTypes.includes(uploadFile.type)) {
+      message.error('仅支持 PDF、JPG、PNG 格式');
+      onError?.(new Error('仅支持 PDF、JPG、PNG 格式'));
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const result = await uploadAttachment(uploadFile);
+      setAttachments((prev) => [...prev, result]);
+      onSuccess?.(result);
+      message.success(`${uploadFile.name} 上传成功`);
+    } catch {
+      onError?.(new Error('上传失败'));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // 删除已上传附件
+  const handleRemoveAttachment = (attachmentId: number) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+    setFileList((prev) => prev.filter((f) => f.uid !== String(attachmentId)));
+  };
+
   // 提交申请（草稿）
   const handleApply = async () => {
     try {
@@ -121,6 +169,8 @@ export default function LeaveApplyPage() {
       message.success('请假申请已创建（草稿）');
       form.resetFields();
       setCalculatedDays(null);
+      setAttachments([]);
+      setFileList([]);
       fetchBalances();
     } catch (err: any) {
       if (err?.errorFields) return;
@@ -242,6 +292,64 @@ export default function LeaveApplyPage() {
 
               <Form.Item name="reason" label="请假原因" rules={[{ required: true, message: '请输入原因' }]}>
                 <TextArea rows={3} placeholder="请详细说明请假原因" maxLength={500} showCount />
+              </Form.Item>
+
+              <Form.Item label="附件材料（选填）">
+                <Upload.Dragger
+                  customRequest={handleUpload}
+                  fileList={fileList}
+                  onChange={({ fileList: newFileList }) => setFileList(newFileList)}
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  multiple
+                  showUploadList={{
+                    showPreviewIcon: true,
+                    showRemoveIcon: true,
+                    showDownloadIcon: false,
+                  }}
+                >
+                  <p className="ant-upload-drag-icon">
+                    <InboxOutlined />
+                  </p>
+                  <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+                  <p className="ant-upload-hint">
+                    支持 PDF、JPG、PNG 格式，单个文件不超过 10MB
+                  </p>
+                </Upload.Dragger>
+
+                {/* 已上传附件列表 */}
+                {attachments.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ marginBottom: 8, fontWeight: 500 }}>已上传 ({attachments.length})：</div>
+                    {attachments.map((att) => (
+                      <div
+                        key={att.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '6px 12px',
+                          background: '#fafafa',
+                          borderRadius: 4,
+                          marginBottom: 4,
+                        }}
+                      >
+                        <span style={{ fontSize: 13 }}>
+                          📎 {att.fileName}
+                          <span style={{ color: '#999', marginLeft: 8, fontSize: 12 }}>
+                            ({Math.round(att.fileSize / 1024)} KB)
+                          </span>
+                        </span>
+                        <Button
+                          type="link"
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => handleRemoveAttachment(att.id)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </Form.Item>
 
               <Form.Item name="handoverTo" label="工作交接人">
