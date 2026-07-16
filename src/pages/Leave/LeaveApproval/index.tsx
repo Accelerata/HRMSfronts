@@ -4,58 +4,58 @@
  * 按 spec: leave-management — 待审批请假列表 + ApprovalModal
  *
  * API:
- *   GET  /approval/todo?businessType=1
- *   POST /leave/{id}/approve
+ *   GET  /approvals/todo          — 审批工作台待办（按 businessType=1 筛选请假）
+ *   POST /leave/{id}/approve      — 审批请假申请
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Card, Table, Button, Space, Tag, message } from 'antd';
+import { Card, Table, Button, message } from 'antd';
 import { CheckCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { get } from '@/utils/request';
-import type { PageResult } from '@/utils/request';
 import { approveLeave } from '@/services/leave';
-import type { LeaveApplication } from '@/services/leave';
 import ApprovalModal from '@/components/ApprovalModal';
-import { LEAVE_TYPE_MAP, LEAVE_APPLICATION_STATUS_MAP } from '@/utils/constants';
-import { getStatusColor } from '@/utils/constants';
 
-type ApprovalItem = LeaveApplication;
+/** 审批待办记录（按 API 17.1 approvals/todo 响应结构） */
+interface ApprovalTodoItem {
+  recordId: number;
+  businessType: number;
+  businessTypeName: string;
+  businessId: number;
+  applicantName: string;
+  applicantDept: string;
+  applicationTime: string;
+  deadline?: string;
+  summary: string;
+}
 
 export default function LeaveApprovalPage() {
-  const [data, setData] = useState<ApprovalItem[]>([]);
+  const [data, setData] = useState<ApprovalTodoItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
 
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
-  const [approvingRecord, setApprovingRecord] = useState<ApprovalItem | null>(null);
+  const [approvingRecord, setApprovingRecord] = useState<ApprovalTodoItem | null>(null);
   const [approving, setApproving] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await get<PageResult<ApprovalItem>>('/approval/todo', {
-        businessType: 1, // 请假申请
-        page,
-        size: 20,
-      });
-      setData(result.list || []);
-      setTotal(result.total);
+      const result = await get<ApprovalTodoItem[]>('/approvals/todo');
+      // 筛选请假相关的待办 (businessType=1)
+      const leaveItems = (result || []).filter((item) => item.businessType === 1);
+      setData(leaveItems);
     } catch {
-      // 审批接口可能未就绪，静默处理
       setData([]);
-      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, []);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const handleOpenApproval = (record: ApprovalItem) => {
+  const handleOpenApproval = (record: ApprovalTodoItem) => {
     setApprovingRecord(record);
     setApprovalModalOpen(true);
   };
@@ -64,7 +64,7 @@ export default function LeaveApprovalPage() {
     if (!approvingRecord) return;
     setApproving(true);
     try {
-      await approveLeave(approvingRecord.id, {
+      await approveLeave(approvingRecord.businessId, {
         action: values.action,
         comment: values.comment,
       });
@@ -80,38 +80,30 @@ export default function LeaveApprovalPage() {
     }
   };
 
-  const columns: ColumnsType<ApprovalItem> = [
+  const columns: ColumnsType<ApprovalTodoItem> = [
     {
       title: '申请人',
-      dataIndex: 'employeeName',
+      dataIndex: 'applicantName',
       width: 100,
     },
     {
-      title: '假期类型',
-      dataIndex: 'leaveType',
-      width: 90,
-      render: (v: number) => LEAVE_TYPE_MAP[v] || '--',
+      title: '部门',
+      dataIndex: 'applicantDept',
+      width: 120,
     },
     {
-      title: '日期范围',
-      width: 200,
-      render: (_, record) => `${record.startDate} ~ ${record.endDate}`,
-    },
-    {
-      title: '天数',
-      dataIndex: 'days',
-      width: 70,
-      render: (v: number) => <strong>{v}</strong>,
-    },
-    {
-      title: '原因',
-      dataIndex: 'reason',
+      title: '摘要',
+      dataIndex: 'summary',
       ellipsis: true,
-      width: 200,
     },
     {
-      title: '创建时间',
-      dataIndex: 'createTime',
+      title: '申请时间',
+      dataIndex: 'applicationTime',
+      width: 170,
+    },
+    {
+      title: '截止时间',
+      dataIndex: 'deadline',
       width: 170,
     },
     {
@@ -141,18 +133,12 @@ export default function LeaveApprovalPage() {
         }
       >
         <Table
-          rowKey="id"
+          rowKey="recordId"
           columns={columns}
           dataSource={data}
           loading={loading}
-          pagination={{
-            current: page,
-            total,
-            pageSize: 20,
-            showTotal: (t) => `共 ${t} 条`,
-            onChange: (p) => setPage(p),
-          }}
-          scroll={{ x: 900 }}
+          pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条` }}
+          scroll={{ x: 800 }}
         />
       </Card>
 

@@ -35,8 +35,18 @@ import dayjs from 'dayjs';
 
 const { TextArea } = Input;
 
-/** 审批列表项（复用补卡结构） */
-type ApprovalItem = SupplementaryCardRecord;
+/** 审批待办记录（按 API 17.1 approvals/todo 响应结构） */
+interface ApprovalTodoItem {
+  recordId: number;
+  businessType: number;
+  businessTypeName: string;
+  businessId: number;
+  applicantName: string;
+  applicantDept: string;
+  applicationTime: string;
+  deadline?: string;
+  summary: string;
+}
 
 export default function SupplementaryCardPage() {
   const currentUser = useUserStore((s) => s.currentUser);
@@ -50,10 +60,10 @@ export default function SupplementaryCardPage() {
   const [myLoading, setMyLoading] = useState(false);
 
   // ---------- Tab 3: 审批 ----------
-  const [approvalList, setApprovalList] = useState<ApprovalItem[]>([]);
+  const [approvalList, setApprovalList] = useState<ApprovalTodoItem[]>([]);
   const [approvalLoading, setApprovalLoading] = useState(false);
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
-  const [approvingRecord, setApprovingRecord] = useState<ApprovalItem | null>(null);
+  const [approvingRecord, setApprovingRecord] = useState<ApprovalTodoItem | null>(null);
   const [approving, setApproving] = useState(false);
 
   // ---------- Tab 1: 提交补卡申请 ----------
@@ -99,14 +109,11 @@ export default function SupplementaryCardPage() {
   const fetchApprovalList = useCallback(async () => {
     setApprovalLoading(true);
     try {
-      const result = await get<PageResult<ApprovalItem>>('/approval/todo', {
-        businessType: 6, // 补卡申请
-        page: 1,
-        size: 50,
-      });
-      setApprovalList(result.list || []);
+      const result = await get<ApprovalTodoItem[]>('/approvals/todo');
+      // 筛选补卡相关的待办 (businessType=6)
+      const suppCards = (result || []).filter((item) => item.businessType === 6);
+      setApprovalList(suppCards);
     } catch {
-      // 审批接口可能尚未就绪，静默处理
       setApprovalList([]);
     } finally {
       setApprovalLoading(false);
@@ -114,7 +121,7 @@ export default function SupplementaryCardPage() {
   }, []);
 
   // ---------- Tab 3: 审批操作 ----------
-  const handleOpenApproval = (record: ApprovalItem) => {
+  const handleOpenApproval = (record: ApprovalTodoItem) => {
     setApprovingRecord(record);
     setApprovalModalOpen(true);
   };
@@ -123,7 +130,7 @@ export default function SupplementaryCardPage() {
     if (!approvingRecord) return;
     setApproving(true);
     try {
-      await approve(approvingRecord.id, {
+      await approve(approvingRecord.businessId, {
         action: values.action,
         comment: values.comment,
       });
@@ -179,36 +186,30 @@ export default function SupplementaryCardPage() {
   ];
 
   /** 审批列表列 */
-  const approvalColumns: ColumnsType<ApprovalItem> = [
+  const approvalColumns: ColumnsType<ApprovalTodoItem> = [
     {
-      title: '申请日期',
-      dataIndex: 'attendanceDate',
+      title: '申请人',
+      dataIndex: 'applicantName',
+      width: 100,
+    },
+    {
+      title: '部门',
+      dataIndex: 'applicantDept',
       width: 120,
     },
     {
-      title: '申请人',
-      dataIndex: 'employeeName',
-      width: 100,
-    },
-    {
-      title: '打卡类型',
-      dataIndex: 'cardType',
-      width: 100,
-      render: (v: number) => CARD_TYPE_MAP[v] || '--',
-    },
-    {
-      title: '补充时间',
-      dataIndex: 'supplementTime',
-      width: 110,
-    },
-    {
-      title: '原因',
-      dataIndex: 'reason',
+      title: '摘要',
+      dataIndex: 'summary',
       ellipsis: true,
     },
     {
-      title: '创建时间',
-      dataIndex: 'createTime',
+      title: '申请时间',
+      dataIndex: 'applicationTime',
+      width: 180,
+    },
+    {
+      title: '截止时间',
+      dataIndex: 'deadline',
       width: 180,
     },
     {
