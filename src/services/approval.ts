@@ -2,13 +2,13 @@
  * 审批工作台 API
  *
  * 按 API 文档 17.1-17.7：
- *   17.1 GET  /approvals/todo                      — 我的待办
- *   17.2 GET  /approvals/done                      — 我的已办
- *   17.3 GET  /approvals/detail/{businessType}/{businessId} — 统一审批详情
- *   17.4 POST /approvals/records/{id}/transfer     — 转交审批任务
- *   17.5 POST /approvals/delegations               — 设置委托
- *   17.6 DELETE /approvals/delegations/{id}        — 取消委托
- *   17.7 GET  /approvals/delegations/my            — 查询我的委托
+ *   17.1 GET  /approval/todo                      — 我的待办
+ *   17.2 GET  /approval/done                      — 我的已办
+ *   17.3 GET  /approval/detail/{businessType}/{businessId} — 统一审批详情
+ *   17.4 POST /approval/records/{id}/transfer     — 转交审批任务
+ *   17.5 POST /approval/delegations               — 设置委托
+ *   17.6 DELETE /approval/delegations/{id}        — 取消委托
+ *   17.7 GET  /approval/delegations/my            — 查询我的委托
  */
 
 import { get, post, del } from '@/utils/request';
@@ -82,61 +82,61 @@ export interface Delegation {
 
 /**
  * 17.1 我的待办
- * GET /approvals/todo
+ * GET /approval/todo
  */
 export async function getTodo(): Promise<ApprovalRecordItem[]> {
-  return get('/approvals/todo');
+  return get('/approval/todo');
 }
 
 /**
  * 17.2 我的已办
- * GET /approvals/done
+ * GET /approval/done
  */
 export async function getDone(): Promise<ApprovalRecordItem[]> {
-  return get('/approvals/done');
+  return get('/approval/done');
 }
 
 /**
  * 17.3 统一审批详情
- * GET /approvals/detail/{businessType}/{businessId}
+ * GET /approval/detail/{businessType}/{businessId}
  */
 export async function getDetail(
   businessType: number,
   businessId: number,
 ): Promise<ApprovalDetail> {
-  return get(`/approvals/detail/${businessType}/${businessId}`);
+  return get(`/approval/detail/${businessType}/${businessId}`);
 }
 
 /**
  * 17.4 转交审批任务
- * POST /approvals/records/{id}/transfer
+ * POST /approval/records/{id}/transfer
  */
 export async function transfer(recordId: number, params: TransferParams): Promise<void> {
-  return post(`/approvals/records/${recordId}/transfer`, params as any);
+  return post(`/approval/records/${recordId}/transfer`, params as any);
 }
 
 /**
  * 17.5 设置委托
- * POST /approvals/delegations
+ * POST /approval/delegations
  */
 export async function createDelegation(params: DelegationParams): Promise<void> {
-  return post('/approvals/delegations', params as any);
+  return post('/approval/delegations', params as any);
 }
 
 /**
  * 17.6 取消委托
- * DELETE /approvals/delegations/{id}
+ * DELETE /approval/delegations/{id}
  */
 export async function deleteDelegation(id: number): Promise<void> {
-  return del(`/approvals/delegations/${id}`);
+  return del(`/approval/delegations/${id}`);
 }
 
 /**
  * 17.7 查询我的委托
- * GET /approvals/delegations/my
+ * GET /approval/delegations/my
  */
 export async function getMyDelegations(): Promise<Delegation[]> {
-  return get('/approvals/delegations/my');
+  return get('/approval/delegations/my');
 }
 
 // ====== 审批操作（复用各模块的 approve 接口） ======
@@ -145,11 +145,11 @@ export async function getMyDelegations(): Promise<Delegation[]> {
  * 通用审批操作
  *
  * 根据不同 businessType 调用不同模块的 approve 接口：
- *   1=请假: POST /leave/applications/{id}/approve
+ *   1=请假: POST /leave/{id}/approve
  *   2=入职: PUT  /onboarding/{id}/approve
- *   3=转正: POST /regularization/{id}/approve
- *   4=调岗: POST /transfer/{id}/approve
- *   5=离职: POST /resignation/{id}/approve
+ *   3=转正: PUT  /regularization/{id}/approve
+ *   4=调岗: PUT  /transfers/{id}/approve
+ *   5=离职: PUT  /resignations/{id}/approve
  *   6=补卡: POST /supplementary-card/{id}/approve
  *   7=薪资批次: POST /salary/batches/{id}/approve
  */
@@ -164,19 +164,27 @@ export interface ApproveParams {
 }
 
 const APPROVE_URL_MAP: Record<number, string> = {
-  1: '/leave/applications',
-  2: '/onboarding',
-  3: '/regularization',
-  4: '/transfer',
-  5: '/resignation',
-  6: '/supplementary-card',
-  7: '/salary/batches',
+  1: '/leave',                // LeaveController: POST /leave/{id}/approve
+  2: '/onboarding',            // OnboardingController: PUT /onboarding/{id}/approve
+  3: '/regularization',        // RegularizationController: PUT /regularization/{id}/approve
+  4: '/transfers',             // TransferController: PUT /transfers/{id}/approve
+  5: '/resignations',          // ResignationController: PUT /resignations/{id}/approve
+  6: '/supplementary-card',    // SupplementaryCardController: POST /supplementary-card/{id}/approve
+  7: '/salary',                // SalaryController: POST /salary/batches/{id}/approve
 };
+
+/** PUT 方法的业务类型（后端使用 @PutMapping） */
+const PUT_BUSINESS_TYPES = new Set([2, 3, 4, 5]);
 
 /** 获取审批接口 URL */
 function getApproveUrl(businessType: number, businessId: number): string {
   const prefix = APPROVE_URL_MAP[businessType];
   if (!prefix) throw new Error(`未知业务类型: ${businessType}`);
+
+  // 薪资批次 approve 路径是 /batches/{id}/approve，其他都是 /{id}/approve
+  if (businessType === 7) {
+    return `${prefix}/batches/${businessId}/approve`;
+  }
   return `${prefix}/${businessId}/approve`;
 }
 
@@ -190,8 +198,7 @@ export async function approve(
   params: ApproveParams,
 ): Promise<void> {
   const url = getApproveUrl(businessType, businessId);
-  // 大部分模块用 POST，onboarding 用 PUT
-  if (businessType === 2) {
+  if (PUT_BUSINESS_TYPES.has(businessType)) {
     const { put } = await import('@/utils/request');
     return put(url, params as any);
   }

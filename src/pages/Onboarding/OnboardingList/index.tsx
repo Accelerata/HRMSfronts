@@ -26,6 +26,7 @@ import { useUserStore } from '@/models/user';
 import * as onboardingService from '@/services/onboarding';
 import type { OnboardingApplication, OnboardingParams } from '@/services/onboarding';
 import ApprovalModal from '@/components/ApprovalModal';
+import SensitiveText from '@/components/SensitiveText';
 import { ONBOARDING_STATUS_MAP, GENDER_MAP, ENTRY_TYPE_MAP } from '@/utils/constants';
 import { getStatusColor } from '@/utils/constants';
 import { getTree } from '@/services/dept';
@@ -228,7 +229,13 @@ export default function OnboardingListPage() {
 
   const columns: ColumnsType<OnboardingApplication> = [
     { title: '姓名', dataIndex: 'realName', width: 90 },
-    { title: '手机号', dataIndex: 'phone', width: 120, ellipsis: true },
+    {
+      title: '手机号',
+      dataIndex: 'phone',
+      width: 130,
+      ellipsis: true,
+      render: (v: string) => <SensitiveText text={v} type="phone" />,
+    },
     { title: '邮箱', dataIndex: 'email', width: 180, ellipsis: true },
     { title: '目标部门', dataIndex: 'targetDeptName', width: 110, ellipsis: true },
     { title: '目标职位', dataIndex: 'targetPositionName', width: 130, ellipsis: true },
@@ -467,9 +474,13 @@ export default function OnboardingListPage() {
         {selectedRecord && (
           <Descriptions column={1} bordered size="small">
             <Descriptions.Item label="姓名">{selectedRecord.realName}</Descriptions.Item>
-            <Descriptions.Item label="手机号">{selectedRecord.phone}</Descriptions.Item>
+            <Descriptions.Item label="手机号">
+              <SensitiveText text={selectedRecord.phone} type="phone" />
+            </Descriptions.Item>
             <Descriptions.Item label="邮箱">{selectedRecord.email}</Descriptions.Item>
-            <Descriptions.Item label="身份证号">{selectedRecord.idCard || '--'}</Descriptions.Item>
+            <Descriptions.Item label="身份证号">
+              <SensitiveText text={selectedRecord.idCard} type="idCard" />
+            </Descriptions.Item>
             <Descriptions.Item label="目标部门">{selectedRecord.targetDeptName || '--'}</Descriptions.Item>
             <Descriptions.Item label="目标职位">{selectedRecord.targetPositionName || '--'}</Descriptions.Item>
             <Descriptions.Item label="薪资">¥{selectedRecord.offerSalary?.toLocaleString()}</Descriptions.Item>

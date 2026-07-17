@@ -32,6 +32,9 @@ export default defineConfig({
   // Mock 配置：开发环境优先使用 mock/ 目录，然后才走代理
   mock: {},
 
+  // esbuild IIFE 冲突修复
+  esbuildMinifyIIFE: true,
+
   // 代理配置：Mock 未命中时才转发到后端
   proxy: {
     '/api': {
